@@ -26,5 +26,5 @@ urlpatterns = [
     path('foros/<int:id_foro>', endpoints.foro_detail),
 
     path('foros/<int:id_foro>/rutas', endpoints.rutas),
-    path('rutas/<int:id_ruta>', endpoints.ruta_detail),
+    path('foros/<int:id_foro>/rutas/<int:id_ruta>', endpoints.ruta_detail),
 ]

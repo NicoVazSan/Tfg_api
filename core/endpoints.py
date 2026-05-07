@@ -55,11 +55,102 @@ def register_user(request):
 
     return JsonResponse({'message': 'User created'}, status=201)
 
+
 @csrf_exempt
-def ruta_detail(request, id_ruta):
+def rutas(request, id_foro):
+    # GET -> listar rutas de un foro
+    if request.method == 'GET':
+
+        try:
+            foro = Foro.objects.get(id=id_foro)
+        except Foro.DoesNotExist:
+            return JsonResponse({"error": "Foro no encontrado"}, status=404)
+
+        rutas = Ruta.objects.filter(foro=foro).order_by('-datetime')
+
+        data = []
+
+        for ruta in rutas:
+
+            ubicaciones = Ubicacion.objects.filter(ruta=ruta)
+
+            data.append({
+                "id": ruta.id,
+                "message": ruta.message,
+                "datetime": ruta.datetime.isoformat(),
+                "username": ruta.user.username,
+                "ubicaciones": [
+                    {
+                        "id": u.id,
+                        "ubi": u.ubi
+                    }
+                    for u in ubicaciones
+                ]
+            })
+
+        return JsonResponse({
+            "foro": foro.titulo,
+            "rutas": data
+        }, status=200)
+
+    # POST -> crear ruta
+    elif request.method == 'POST':
+
+        # Token obligatorio
+        token = request.headers.get('Authorization')
+
+        if not token:
+            return JsonResponse({"error": "Token requerido"}, status=401)
+
+        try:
+            session = UserSession.objects.get(token=token)
+            usuario = session.user
+        except UserSession.DoesNotExist:
+            return JsonResponse({"error": "Token inválido"}, status=401)
+
+        try:
+            foro = Foro.objects.get(id=id_foro)
+        except Foro.DoesNotExist:
+            return JsonResponse({"error": "Foro no encontrado"}, status=404)
+
+        try:
+            body_json = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "JSON inválido"}, status=400)
+
+        message = body_json.get('message')
+        ubicaciones = body_json.get('ubicaciones', [])
+
+        if not message:
+            return JsonResponse({"error": "Message requerido"}, status=400)
+
+        nueva_ruta = Ruta.objects.create(
+            message=message,
+            user=usuario,
+            foro=foro
+        )
+
+        for ubi in ubicaciones:
+            Ubicacion.objects.create(
+                ubi=ubi,
+                ruta=nueva_ruta
+            )
+
+        return JsonResponse({
+            "id": nueva_ruta.id,
+            "message": nueva_ruta.message,
+            "datetime": nueva_ruta.datetime.isoformat(),
+            "username": nueva_ruta.user.username,
+            "ubicaciones": ubicaciones
+        }, status=201)
+
+    return JsonResponse({"error": "HTTP method unsupported"}, status=405)
+
+@csrf_exempt
+def ruta_detail(request, id_foro, id_ruta):
 
     try:
-        ruta = Ruta.objects.get(id=id_ruta)
+        ruta = Ruta.objects.get(id=id_ruta, foro_id=id_foro)
     except Ruta.DoesNotExist:
         return JsonResponse({"error": "Ruta no encontrada"}, status=404)
 
@@ -103,7 +194,6 @@ def ruta_detail(request, id_ruta):
         except UserSession.DoesNotExist:
             return JsonResponse({"error": "Token inválido"}, status=401)
 
-        # Solo el dueño puede editar
         if ruta.user != session.user:
             return JsonResponse({"error": "No autorizado"}, status=403)
 
@@ -112,23 +202,17 @@ def ruta_detail(request, id_ruta):
         except json.JSONDecodeError:
             return JsonResponse({"error": "JSON inválido"}, status=400)
 
-        # Nuevos datos
         new_message = body_json.get('message')
         nuevas_ubicaciones = body_json.get('ubicaciones')
 
-        # Actualizar message
         if new_message:
             ruta.message = new_message
 
         ruta.save()
 
-        # Si manda ubicaciones -> reemplazarlas
         if nuevas_ubicaciones is not None:
-
-            # borrar antiguas
             Ubicacion.objects.filter(ruta=ruta).delete()
 
-            # crear nuevas
             for ubi in nuevas_ubicaciones:
                 Ubicacion.objects.create(
                     ubi=ubi,
@@ -169,15 +253,12 @@ def ruta_detail(request, id_ruta):
         except UserSession.DoesNotExist:
             return JsonResponse({"error": "Token inválido"}, status=401)
 
-        # Solo dueño puede borrar
         if ruta.user != session.user:
             return JsonResponse({"error": "No autorizado"}, status=403)
 
         ruta.delete()
 
-        return JsonResponse({
-            "message": "Ruta eliminada"
-        }, status=200)
+        return JsonResponse({"message": "Ruta eliminada"}, status=200)
 
     return JsonResponse({"error": "HTTP method unsupported"}, status=405)
 
